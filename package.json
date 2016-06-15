@@ -1,0 +1,21 @@
+{
+  "name": "thorin-plugin-mail",
+  "author": "Stiudeo",
+  "version": "1.0.1",
+  "dependencies": {
+    "cheerio": "^0.20.0",
+    "html-to-text": "^2.1.0",
+    "nodemailer": "^2.4.2"
+  },
+  "description": "Thorin.js plugin for e-mail rendering and sending",
+  "main": "index.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Stiudeo/Thorin-plugin-mail"
+  },
+  "homepage": "http://thorinjs.com",
+  "bugs": {
+    "url": "https://github.com/Stiudeo/Thorin-plugin-mail/issues"
+  }
+}
