@@ -2,11 +2,16 @@
 const path = require('path'),
   fs = require('fs'),
   extractText = require('html-to-text'),
-  cheerio = require('cheerio');
+  cheerio = require('cheerio'),
+  juice = require('juice');
 /**
  * The mail plugin wraps itself over the nodemailer node.js module and uses its clients.
+ *
+ * This plugin also offers the following middleware:
+ *    "mail.preview" -> preview an e-mail template.
  * */
 const loadTransports = require('./lib/loader'),
+  loadMiddleware = require('./lib/middleware/preview'),
   TEMPLATE_CACHE = {},  // used to cache plain HTML templates when not using rendering and in production.
   CSS_CACHE = {};       // used to cache inline CSS content for when in production.
 module.exports = function(thorin, opt, pluginName) {
@@ -82,7 +87,7 @@ module.exports = function(thorin, opt, pluginName) {
         return reject(thorin.error('MAIL.DATA', 'Invalid or missing mail transport', 400));
       }
       delete sendOpt.transport;
-      if (!sendOpt.from) sendOpt.from = thorin.sanitize("EMAIL", transportObj.options.from || opt.from);
+      if (!sendOpt.from) sendOpt.from = transportObj.options.from || opt.from;
       if (!sendOpt.from) {
         return reject(thorin.error('MAIL.DATA', 'Invalid or missing from e-mail', 400));
       }
@@ -90,54 +95,121 @@ module.exports = function(thorin, opt, pluginName) {
       /* step one, check if we have to render anything. */
       if (sendOpt.template) {
         sendOpt.html = null;
-        const templatePath = path.normalize(opt.templates + '/' + sendOpt.template);
-        delete sendOpt.template;
+        calls.push(() => {
+          return pluginObj.prepare(sendOpt, _variables).then((html) => {
+            sendOpt.html = html
+            delete sendOpt.template;
+          });
+        });
+      }
+
+      // Check if we have to extract text.
+      if(sendOpt.text === true) {
+        calls.push(() => {
+          const text = extractText.fromString(sendOpt.html, {
+            wordwrap: 100,
+            ignoreImage: true
+          });
+          if(typeof text === 'string' && text) {
+            sendOpt.text = text;
+          }
+        });
+      }
+
+      thorin.series(calls, (err) => {
+        if (err) {
+          return reject(thorin.error(err));
+        }
+        // At this point, try to send it with our client.
+        transportObj.mailer.sendMail(sendOpt, (err, res) => {
+          if(err) {
+            return thorin.error('MAIL.SEND', 'Could not deliver e-mail', err);
+          }
+          resolve(res);
+        });
+      });
+    });
+  }
+
+  /*
+  * Prepares the given HTML or template, to be rendered, styled and parsed.
+  * OPTIONS:
+  *   - html {string} - the actual HTML to be prepared
+   *      OR
+   *  - template {string} - the template path to use in stead of custon HTML
+   *  - variables {object} - an object of variables that will be used while rendering, if using a rendering engine.
+  * */
+  pluginObj.prepare = function PrepareHTML(prepareOpt, _variables) {
+    if(typeof prepareOpt === 'string') {
+      prepareOpt = {
+        template: prepareOpt
+      };
+    } else {
+      prepareOpt = thorin.util.extend({
+        html: null,
+        template: null
+      }, prepareOpt);
+    }
+    return new Promise((resolve, reject) => {
+      if(!prepareOpt.html && !prepareOpt.template) {
+        return reject(thorin.error('MAIL.TEMPLAET', 'Missing mail html or template', 400));
+      }
+      let calls = [],
+        html = null;
+      if(prepareOpt.template) {
+        const templatePath = path.normalize(opt.templates + '/' + prepareOpt .template);
         calls.push(() => {
           // Check if we have the rendering engine installed.
           const renderObj = thorin.plugin(opt.render);
           if (!renderObj) return;
           return new Promise((resolve, reject) => {
-            renderObj.render(templatePath, _variables || {}, (err, html) => {
+            renderObj.render(templatePath, _variables || {}, (err, thtml) => {
               if(err) {
-                return reject(thorin.error('MAIL.TEMPLATE', 'Could not render template content', 500, {
-                  temlplate: sendOpt.template
-                }));
+                logger.warn(`Failed to render template ${templatePath}`, err);
+                return reject(thorin.error('MAIL.TEMPLATE', 'Could not render template content', err));
               }
-              sendOpt.html = html;
+              html = thtml;
               resolve();
             });
           });
         });
         // Check if we still have no html, then we will just fs.readFile.
         calls.push(() => {
-          if (sendOpt.html) return;
+          if (html) return;
           if(thorin.env === 'production' && TEMPLATE_CACHE[templatePath]) {
-            sendOpt.html = TEMPLATE_CACHE[templatePath];
+            html = TEMPLATE_CACHE[templatePath];
             return;
           }
           return new Promise((resolve, reject) => {
-            fs.readFile(templatePath, {encoding: 'utf8'}, (err, html) => {
+            fs.readFile(templatePath, {encoding: 'utf8'}, (err, thtml) => {
               if(err) {
                 logger.warn(`Could not read from mail template: ${templatePath}`, err);
                 return reject(thorin.error('MAIL.TEMPLATE', 'Could not read template content', 500));
               }
+              html = thtml;
               if(thorin.env === 'production') {
-                TEMPLATE_CACHE[templatePath] = html;
+                TEMPLATE_CACHE[templatePath] = thtml;
               }
-              sendOpt.html = html;
               resolve();
             });
           });
         });
+      } else {
+        html = prepareOpt.html;
       }
 
       /* IF we have HTML, extract any <links> and insert them with <style> */
       calls.push(() => {
-        if(!sendOpt.html) return;
-        const $ = cheerio.load(sendOpt.html);
+        if(!html) return;
+        const $ = cheerio.load(html);
         let links = $("link[href]"),
           toDownload = [];
-        if(links.length === 0) return;
+        // remove any scripts
+        $("script").remove();
+        if(links.length === 0) {
+          html = $.html();
+          return;
+        }
         links.each((idx, $link) => {
           try {
             let linkUrl = $link.attribs.href;
@@ -171,38 +243,36 @@ module.exports = function(thorin, opt, pluginName) {
         });
         return new Promise((resolve) => {
           thorin.util.async.parallel(downloads, ()  => {
-            sendOpt.html = $.html();
+            html = $.html();
             resolve();
           });
         });
       });
 
-      // Check if we have to extract text.
-      if(sendOpt.text === true) {
-        calls.push(() => {
-          const text = extractText.fromString(sendOpt.html, {
-            wordwrap: 100,
-            ignoreImage: true
-          });
-          if(typeof text === 'string' && text) {
-            sendOpt.text = text;
-          }
-        });
-      }
-
-      thorin.series(calls, (err) => {
-        if (err) {
-          return reject(thorin.error(err));
-        }
-        // At this point, try to send it with our client.
-        transportObj.mailer.sendMail(sendOpt, (err, res) => {
-          if(err) {
-            return thorin.error('MAIL.SEND', 'Could not deliver e-mail', err);
-          }
-          resolve(res);
+      /* finally, use juice to place <styles> in the style attributes */
+      calls.push(() => {
+        if(!html) return;
+        html = juice(html, {
+          inlinePseudoElements: false
         });
       });
+
+      thorin.series(calls, (err) => {
+        if(err) return reject(err);
+        resolve(html);
+      });
     });
+  }
+  /* insert our preview middleware */
+  loadMiddleware(thorin, opt, pluginObj);
+
+  /* The setup function will setup the templates path */
+  pluginObj.setup = function DoSetup(done) {
+    if(!opt.templates) return done();
+    try {
+      thorin.util.fs.ensureDirSync(path.normalize(opt.templates));
+    } catch(e) {}
+    done();
   }
 
   return pluginObj;
