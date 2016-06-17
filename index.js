@@ -21,7 +21,8 @@ module.exports = function(thorin, opt, pluginName) {
     options: {},         // a hash of {transportKey:{transportOptions}}. NOTE: if we have ONLY ONE TRANPORT, we will use the direct options object.
     from: null,          // generic from address
     templates: "app/emails",  // the template path, relative to thorin's root folder.
-    render: "render"      // the thorin-plugin-render pluginName, to use to render templates. If not present, will fall to plain file loading.
+    render: "render",      // the thorin-plugin-render pluginName, to use to render templates. If not present, will fall to plain file loading.
+    enabled: true          // turning this to false will just simulate email sending.
   }, opt);
   if (typeof opt.templates === 'string') {
     opt.templates = path.normalize(thorin.root + '/' + opt.templates);
@@ -112,6 +113,8 @@ module.exports = function(thorin, opt, pluginName) {
           });
           if(typeof text === 'string' && text) {
             sendOpt.text = text;
+          } else {
+            sendOpt.text = '';
           }
         });
       }
@@ -120,10 +123,17 @@ module.exports = function(thorin, opt, pluginName) {
         if (err) {
           return reject(thorin.error(err));
         }
+        if(!opt.enabled) {
+          logger.trace(`Mock email to ${sendOpt.to} with subject: ${sendOpt.subject}`);
+          return resolve();
+        }
+        if(sendOpt.html === '' && sendOpt.text === '') {
+          return reject(thorin.error('MAIL.SEND', 'Mail content is empty.', 400));
+        }
         // At this point, try to send it with our client.
         transportObj.mailer.sendMail(sendOpt, (err, res) => {
           if(err) {
-            return thorin.error('MAIL.SEND', 'Could not deliver e-mail', err);
+            return reject(thorin.error('MAIL.SEND', 'Could not deliver e-mail', err));
           }
           resolve(res);
         });
@@ -253,7 +263,8 @@ module.exports = function(thorin, opt, pluginName) {
       calls.push(() => {
         if(!html) return;
         html = juice(html, {
-          inlinePseudoElements: false
+          inlinePseudoElements: false,
+          removeStyleTags: false
         });
       });
 
