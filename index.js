@@ -92,13 +92,15 @@ module.exports = function(thorin, opt, pluginName) {
       if (!sendOpt.from) {
         return reject(thorin.error('MAIL.DATA', 'Invalid or missing from e-mail', 400));
       }
-      let calls = [];
+      let calls = [],
+        templateName = null;
       /* step one, check if we have to render anything. */
       if (sendOpt.template) {
         sendOpt.html = null;
         calls.push(() => {
           return pluginObj.prepare(sendOpt, _variables).then((html) => {
             sendOpt.html = html
+            templateName = sendOpt.template;
             delete sendOpt.template;
           });
         });
@@ -124,7 +126,10 @@ module.exports = function(thorin, opt, pluginName) {
           return reject(thorin.error(err));
         }
         if(!opt.enabled) {
-          logger.trace(`Mock email to ${sendOpt.to} with subject: ${sendOpt.subject}`);
+          logger.trace(`Mock email [${templateName || 'raw'}] to [${sendOpt.to}] with subject: ${sendOpt.subject}`);
+          if(_variables) {
+            logger.trace(_variables);
+          }
           return resolve();
         }
         if(sendOpt.html === '' && sendOpt.text === '') {
