@@ -61,10 +61,12 @@ module.exports = function(thorin, opt, pluginName) {
     sendOpt = thorin.util.extend({
       to: null,
       from: opt.from,
+      from_name: null,
       subject: null,
       html: null,
       text: true,
       template: null,
+      replyTo: null,
       transport: null
     }, sendOpt || {});
     if (typeof sendOpt.to === 'string') sendOpt.to = [sendOpt.to];
@@ -91,6 +93,10 @@ module.exports = function(thorin, opt, pluginName) {
       if (!sendOpt.from) sendOpt.from = transportObj.options.from || opt.from;
       if (!sendOpt.from) {
         return reject(thorin.error('MAIL.DATA', 'Invalid or missing from e-mail', 400));
+      }
+      if(sendOpt.from_name) {
+        sendOpt.from = sendOpt.from_name + '<' + sendOpt.from + '>';
+        delete sendOpt.from_name;
       }
       let calls = [],
         templateName = null;
@@ -172,7 +178,7 @@ module.exports = function(thorin, opt, pluginName) {
       let calls = [],
         html = null;
       if(prepareOpt.template) {
-        const templatePath = path.normalize(opt.templates + '/' + prepareOpt .template);
+        const templatePath = (path.isAbsolute(prepareOpt.template) ? prepareOpt.template : path.normalize(opt.templates + '/' + prepareOpt.template));
         calls.push(() => {
           // Check if we have the rendering engine installed.
           const renderObj = thorin.plugin(opt.render);
