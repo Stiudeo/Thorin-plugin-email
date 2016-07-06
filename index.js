@@ -8,7 +8,7 @@ const path = require('path'),
  * The mail plugin wraps itself over the nodemailer node.js module and uses its clients.
  *
  * This plugin also offers the following middleware:
- *    "mail.preview" -> preview an e-mail template.
+ *    "mail#preview" -> preview an e-mail template.
  * */
 const loadTransports = require('./lib/loader'),
   loadMiddleware = require('./lib/middleware/preview'),
