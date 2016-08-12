@@ -28,11 +28,12 @@ module.exports = function(thorin, opt, pluginName) {
     opt.templates = path.normalize(thorin.root + '/' + opt.templates);
   }
   const logger = thorin.logger(opt.logger);
-  loadTransports(thorin, opt);  // load transports
+  const pluginObj = {};
+  loadTransports(thorin, opt, pluginObj);  // load transports
   if (opt.transport.length === 0) {
     logger.fatal(`No valid mailing transports have been registered.`);
   }
-  const pluginObj = {};
+
   // private function that will select a target transport based on the given string.
   function getTransport(tCode) {
     if (typeof tCode === 'string') {
@@ -56,6 +57,7 @@ module.exports = function(thorin, opt, pluginName) {
    *   - template - {string} -> the template path to use in stead of custom HTML.
    *   - text - {string|boolean} -> if set to string, we'll use it. If set to false, we will not set a text. If set to true, we will extract text from HTML. Defaults to "true"
    *   - transport - {string} - the transport to use. Defaults to the first transport.
+   *               - OR an object with {code: string, options: object} and we'll create a new transport every time.
    * */
   pluginObj.send = function SendEmail(sendOpt, _variables) {
     sendOpt = thorin.util.extend({
@@ -85,12 +87,28 @@ module.exports = function(thorin, opt, pluginName) {
         return reject(thorin.error('MAIL.DATA', 'No valid target e-mails.', 400));
       }
       sendOpt.to = validTo;
-      let transportObj = getTransport(sendOpt.transport);
+      let transportObj,
+        mailerObj,
+        transportOpt;
+      if(typeof sendOpt.transport === 'object' && sendOpt.transport) {
+        // we create a new transport here, with the given options
+        transportObj = pluginObj.createTransport(sendOpt.transport.code, sendOpt.transport.options);
+        transportOpt = sendOpt.transport.options;
+        if(transportObj) mailerObj = transportObj;
+      } else {
+        transportObj = getTransport(sendOpt.transport);
+        if(transportObj) {
+          transportOpt = transportObj.options;
+          mailerObj = transportObj.mailer;
+        }
+      }
       if (!transportObj) {
         return reject(thorin.error('MAIL.DATA', 'Invalid or missing mail transport', 400));
       }
       delete sendOpt.transport;
-      if (!sendOpt.from) sendOpt.from = transportObj.options.from || opt.from;
+      if (!sendOpt.from) {
+        sendOpt.from = transportOpt.from || opt.from;
+      }
       if (!sendOpt.from) {
         return reject(thorin.error('MAIL.DATA', 'Invalid or missing from e-mail', 400));
       }
@@ -141,8 +159,13 @@ module.exports = function(thorin, opt, pluginName) {
         if(sendOpt.html === '' && sendOpt.text === '') {
           return reject(thorin.error('MAIL.SEND', 'Mail content is empty.', 400));
         }
+        delete sendOpt.template;
+        /* MAILGUN has replyTo under h:Reply-To */
+        if(sendOpt.replyTo) {
+          sendOpt['h:Reply-To'] = sendOpt.replyTo;
+        }
         // At this point, try to send it with our client.
-        transportObj.mailer.sendMail(sendOpt, (err, res) => {
+        mailerObj.sendMail(sendOpt, (err, res) => {
           if(err) {
             return reject(thorin.error('MAIL.SEND', 'Could not deliver e-mail', err));
           }
@@ -150,7 +173,7 @@ module.exports = function(thorin, opt, pluginName) {
         });
       });
     });
-  }
+  };
 
   /*
   * Prepares the given HTML or template, to be rendered, styled and parsed.
@@ -160,7 +183,7 @@ module.exports = function(thorin, opt, pluginName) {
    *  - template {string} - the template path to use in stead of custon HTML
    *  - variables {object} - an object of variables that will be used while rendering, if using a rendering engine.
   * */
-  pluginObj.prepare = function PrepareHTML(prepareOpt, _variables) {
+  pluginObj.prepare = function PrepareHTML(prepareOpt, _variables, _includeRenderGlobals) {
     if(typeof prepareOpt === 'string') {
       prepareOpt = {
         template: prepareOpt
@@ -173,7 +196,7 @@ module.exports = function(thorin, opt, pluginName) {
     }
     return new Promise((resolve, reject) => {
       if(!prepareOpt.html && !prepareOpt.template) {
-        return reject(thorin.error('MAIL.TEMPLAET', 'Missing mail html or template', 400));
+        return reject(thorin.error('MAIL.TEMPLATE', 'Missing mail html or template', 400));
       }
       let calls = [],
         html = null;
@@ -191,7 +214,7 @@ module.exports = function(thorin, opt, pluginName) {
               }
               html = thtml;
               resolve();
-            });
+            }, _includeRenderGlobals);
           });
         });
         // Check if we still have no html, then we will just fs.readFile.

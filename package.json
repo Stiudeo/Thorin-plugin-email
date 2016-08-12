@@ -1,7 +1,7 @@
 {
   "name": "thorin-plugin-mail",
-  "author": "Stiudeo",
-  "version": "1.0.9",
+  "author": "UNLOQ Systems",
+  "version": "1.0.11",
   "dependencies": {
     "cheerio": "0.20.0",
     "html-to-text": "2.1.3",
