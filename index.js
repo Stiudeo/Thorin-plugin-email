@@ -14,7 +14,7 @@ const loadTransports = require('./lib/loader'),
   loadMiddleware = require('./lib/middleware/preview'),
   TEMPLATE_CACHE = {},  // used to cache plain HTML templates when not using rendering and in production.
   CSS_CACHE = {};       // used to cache inline CSS content for when in production.
-module.exports = function(thorin, opt, pluginName) {
+module.exports = function (thorin, opt, pluginName) {
   opt = thorin.util.extend({
     logger: 'mail',
     transport: [],     // array of transports to use. If sent as strings, we will do a require() for the modules, otherwise, we will consider the actual object as the transport.
@@ -90,14 +90,14 @@ module.exports = function(thorin, opt, pluginName) {
       let transportObj,
         mailerObj,
         transportOpt;
-      if(typeof sendOpt.transport === 'object' && sendOpt.transport) {
+      if (typeof sendOpt.transport === 'object' && sendOpt.transport) {
         // we create a new transport here, with the given options
         transportObj = pluginObj.createTransport(sendOpt.transport.code, sendOpt.transport.options);
         transportOpt = sendOpt.transport.options;
-        if(transportObj) mailerObj = transportObj;
+        if (transportObj) mailerObj = transportObj;
       } else {
         transportObj = getTransport(sendOpt.transport);
-        if(transportObj) {
+        if (transportObj) {
           transportOpt = transportObj.options;
           mailerObj = transportObj.mailer;
         }
@@ -112,7 +112,7 @@ module.exports = function(thorin, opt, pluginName) {
       if (!sendOpt.from) {
         return reject(thorin.error('MAIL.DATA', 'Invalid or missing from e-mail', 400));
       }
-      if(sendOpt.from_name) {
+      if (sendOpt.from_name) {
         sendOpt.from = sendOpt.from_name + '<' + sendOpt.from + '>';
         delete sendOpt.from_name;
       }
@@ -131,13 +131,13 @@ module.exports = function(thorin, opt, pluginName) {
       }
 
       // Check if we have to extract text.
-      if(sendOpt.text === true) {
+      if (sendOpt.text === true) {
         calls.push(() => {
           const text = extractText.fromString(sendOpt.html, {
             wordwrap: 100,
             ignoreImage: true
           });
-          if(typeof text === 'string' && text) {
+          if (typeof text === 'string' && text) {
             sendOpt.text = text;
           } else {
             sendOpt.text = '';
@@ -149,24 +149,24 @@ module.exports = function(thorin, opt, pluginName) {
         if (err) {
           return reject(thorin.error(err));
         }
-        if(!opt.enabled) {
+        if (!opt.enabled) {
           logger.trace(`Mock email [${templateName || 'raw'}] to [${sendOpt.to}] with subject: ${sendOpt.subject}`);
-          if(_variables) {
+          if (_variables) {
             logger.trace(_variables);
           }
           return resolve();
         }
-        if(sendOpt.html === '' && sendOpt.text === '') {
+        if (sendOpt.html === '' && sendOpt.text === '') {
           return reject(thorin.error('MAIL.SEND', 'Mail content is empty.', 400));
         }
         delete sendOpt.template;
         /* MAILGUN has replyTo under h:Reply-To */
-        if(sendOpt.replyTo) {
+        if (sendOpt.replyTo) {
           sendOpt['h:Reply-To'] = sendOpt.replyTo;
         }
         // At this point, try to send it with our client.
         mailerObj.sendMail(sendOpt, (err, res) => {
-          if(err) {
+          if (err) {
             return reject(thorin.error('MAIL.SEND', 'Could not deliver e-mail', err));
           }
           resolve(res);
@@ -176,15 +176,15 @@ module.exports = function(thorin, opt, pluginName) {
   };
 
   /*
-  * Prepares the given HTML or template, to be rendered, styled and parsed.
-  * OPTIONS:
-  *   - html {string} - the actual HTML to be prepared
+   * Prepares the given HTML or template, to be rendered, styled and parsed.
+   * OPTIONS:
+   *   - html {string} - the actual HTML to be prepared
    *      OR
    *  - template {string} - the template path to use in stead of custon HTML
    *  - variables {object} - an object of variables that will be used while rendering, if using a rendering engine.
-  * */
+   * */
   pluginObj.prepare = function PrepareHTML(prepareOpt, _variables, _includeRenderGlobals) {
-    if(typeof prepareOpt === 'string') {
+    if (typeof prepareOpt === 'string') {
       prepareOpt = {
         template: prepareOpt
       };
@@ -195,12 +195,12 @@ module.exports = function(thorin, opt, pluginName) {
       }, prepareOpt);
     }
     return new Promise((resolve, reject) => {
-      if(!prepareOpt.html && !prepareOpt.template) {
+      if (!prepareOpt.html && !prepareOpt.template) {
         return reject(thorin.error('MAIL.TEMPLATE', 'Missing mail html or template', 400));
       }
       let calls = [],
         html = null;
-      if(prepareOpt.template) {
+      if (prepareOpt.template) {
         const templatePath = (path.isAbsolute(prepareOpt.template) ? prepareOpt.template : path.normalize(opt.templates + '/' + prepareOpt.template));
         calls.push(() => {
           // Check if we have the rendering engine installed.
@@ -208,7 +208,7 @@ module.exports = function(thorin, opt, pluginName) {
           if (!renderObj) return;
           return new Promise((resolve, reject) => {
             renderObj.render(templatePath, _variables || {}, (err, thtml) => {
-              if(err) {
+              if (err) {
                 logger.warn(`Failed to render template ${templatePath}`, err);
                 return reject(thorin.error('MAIL.TEMPLATE', 'Could not render template content', err));
               }
@@ -220,18 +220,18 @@ module.exports = function(thorin, opt, pluginName) {
         // Check if we still have no html, then we will just fs.readFile.
         calls.push(() => {
           if (html) return;
-          if(thorin.env === 'production' && TEMPLATE_CACHE[templatePath]) {
+          if (thorin.env === 'production' && TEMPLATE_CACHE[templatePath]) {
             html = TEMPLATE_CACHE[templatePath];
             return;
           }
           return new Promise((resolve, reject) => {
             fs.readFile(templatePath, {encoding: 'utf8'}, (err, thtml) => {
-              if(err) {
+              if (err) {
                 logger.warn(`Could not read from mail template: ${templatePath}`, err);
                 return reject(thorin.error('MAIL.TEMPLATE', 'Could not read template content', 500));
               }
               html = thtml;
-              if(thorin.env === 'production') {
+              if (thorin.env === 'production') {
                 TEMPLATE_CACHE[templatePath] = thtml;
               }
               resolve();
@@ -244,22 +244,22 @@ module.exports = function(thorin, opt, pluginName) {
 
       /* IF we have HTML, extract any <links> and insert them with <style> */
       calls.push(() => {
-        if(!html) return;
+        if (!html) return;
         const $ = cheerio.load(html);
         let links = $("link[href]"),
           toDownload = [];
         // remove any scripts
         $("script").remove();
-        if(links.length === 0) {
+        if (links.length === 0) {
           html = $.html();
           return;
         }
         links.each((idx, $link) => {
           try {
             let linkUrl = $link.attribs.href;
-            if(!linkUrl || linkUrl.indexOf('.css') === -1) return;
+            if (!linkUrl || linkUrl.indexOf('.css') === -1) return;
             toDownload.push(linkUrl);
-          } catch(e) {
+          } catch (e) {
           }
         });
         links.replaceWith("");  // remove any links.
@@ -267,18 +267,19 @@ module.exports = function(thorin, opt, pluginName) {
         // download every css resource.
         const downloads = [];
         toDownload.forEach((cssUrl) => {
-          if(thorin.env === 'production' && typeof CSS_CACHE[cssUrl] === 'string') {
-            $head.append("<style type='text/css'>\n"+CSS_CACHE[cssUrl]+"\n</style>");
+          if (thorin.env === 'production' && typeof CSS_CACHE[cssUrl] === 'string') {
+            $head.append("<style type='text/css'>\n" + CSS_CACHE[cssUrl] + "\n</style>");
             return;
           }
           downloads.push((done) => {
+            if (!opt.enabled) return done();
             thorin.util.downloadFile(cssUrl, (err, cssData) => {
-              if(err) {
+              if (err) {
                 logger.warn(`Could not download css content from: ${cssUrl}`, err);
                 return done();
               }
-              $head.append("<style type='text/css'>\n"+cssData+"\n</style>");
-              if(thorin.env === 'production') {
+              $head.append("<style type='text/css'>\n" + cssData + "\n</style>");
+              if (thorin.env === 'production') {
                 CSS_CACHE[cssUrl] = cssData;
               }
               done();
@@ -286,7 +287,7 @@ module.exports = function(thorin, opt, pluginName) {
           });
         });
         return new Promise((resolve) => {
-          thorin.util.async.parallel(downloads, ()  => {
+          thorin.util.async.parallel(downloads, () => {
             html = $.html();
             resolve();
           });
@@ -295,7 +296,7 @@ module.exports = function(thorin, opt, pluginName) {
 
       /* finally, use juice to place <styles> in the style attributes */
       calls.push(() => {
-        if(!html) return;
+        if (!html) return;
         html = juice(html, {
           inlinePseudoElements: false,
           removeStyleTags: false
@@ -303,7 +304,7 @@ module.exports = function(thorin, opt, pluginName) {
       });
 
       thorin.series(calls, (err) => {
-        if(err) return reject(err);
+        if (err) return reject(err);
         resolve(html);
       });
     });
@@ -313,10 +314,11 @@ module.exports = function(thorin, opt, pluginName) {
 
   /* The setup function will setup the templates path */
   pluginObj.setup = function DoSetup(done) {
-    if(!opt.templates) return done();
+    if (!opt.templates) return done();
     try {
       thorin.util.fs.ensureDirSync(path.normalize(opt.templates));
-    } catch(e) {}
+    } catch (e) {
+    }
     done();
   }
 
