@@ -71,6 +71,9 @@ module.exports = function (thorin, opt, pluginName) {
       replyTo: null,
       transport: null
     }, sendOpt || {});
+    if(typeof _variables === 'undefined' && typeof sendOpt.params === 'object' && sendOpt.params) {
+      _variables = sendOpt.params;
+    }
     if (typeof sendOpt.to === 'string') sendOpt.to = [sendOpt.to];
     return new Promise((resolve, reject) => {
       // Step one, validate the "to" e-mail addresses
