@@ -273,6 +273,26 @@ module.exports = function (thorin, opt, pluginName) {
           }
           downloads.push((done) => {
             if (!opt.enabled) return done();
+            /* Check local public/ folder */
+            if (cssUrl.charAt(0) === '/') {
+              cssUrl = cssUrl.split('?')[0];
+              cssUrl = cssUrl.split('..').join('');
+              cssUrl = path.normalize(thorin.root + '/public/' + cssUrl + '.t');
+              try {
+                let cssData = fs.readFileSync(cssUrl, {encoding: 'utf8'});
+                $head.append("<style type='text/css'>\n" + cssData + "\n</style>");
+                if (thorin.env === 'production') {
+                  CSS_CACHE[cssUrl] = cssData;
+                }
+                return done();
+              } catch (e) {
+                if (e.code === 'ENOENT') {
+                  return done();
+                }
+                logger.warn(`Could not read css file ${cssUrl}`);
+                return done();
+              }
+            }
             thorin.util.downloadFile(cssUrl, (err, cssData) => {
               if (err) {
                 logger.warn(`Could not download css content from: ${cssUrl}`, err);
